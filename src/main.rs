@@ -141,141 +141,40 @@ impl Stamp {
 
 fn main() {
     let input = Input::read_input();
-    let state = State::new(input.init_map.clone());
-    let state = annealing(&input, state, 1.0);
+    let mut board = input.init_map.clone();
+    let mut result = vec![];
 
-    println!("{}", state.stamps.len());
+    for _ in 0..Input::K {
+        let mut best_pos = None;
+        let mut best_score = board.calc_score();
 
-    for &(pos, stamp) in state.stamps.iter() {
+        for row in 0..Input::N - 2 {
+            for col in 0..Input::N - 2 {
+                let c = Coord::new(row, col);
+
+                for t in 0..Input::M {
+                    board.stamp(&input.stamps[t], c);
+
+                    if best_score.change_max(board.calc_score()) {
+                        best_pos = Some((c, t));
+                    }
+
+                    board.revert(&input.stamps[t], c);
+                }
+            }
+        }
+
+        if let Some((pos, stamp)) = best_pos {
+            board.stamp(&input.stamps[stamp], pos);
+            result.push((pos, stamp));
+        }
+    }
+
+    println!("{}", result.len());
+
+    for &(pos, stamp) in result.iter() {
         println!("{} {} {}", stamp, pos.row, pos.col);
     }
-}
-
-#[derive(Debug, Clone)]
-struct State {
-    board: Board,
-    stamps: Vec<(Coord, usize)>,
-}
-
-impl State {
-    fn new(board: Board) -> Self {
-        Self {
-            board,
-            stamps: vec![],
-        }
-    }
-
-    fn calc_score(&self) -> i64 {
-        self.board.calc_score()
-    }
-}
-
-fn annealing(input: &Input, initial_solution: State, duration: f64) -> State {
-    let mut solution = initial_solution;
-    let mut best_solution = solution.clone();
-    let mut current_score = solution.calc_score();
-    let mut best_score = current_score;
-    let init_score = current_score;
-
-    let mut all_iter = 0;
-    let mut valid_iter = 0;
-    let mut accepted_count = 0;
-    let mut update_count = 0;
-    let mut rng = rand_pcg::Pcg64Mcg::new(42);
-
-    let duration_inv = 1.0 / duration;
-    let since = std::time::Instant::now();
-
-    let temp0 = 1e10;
-    let temp1 = 1e7;
-    let mut inv_temp = 1.0 / temp0;
-
-    loop {
-        all_iter += 1;
-        if (all_iter & ((1 << 4) - 1)) == 0 {
-            let time = (std::time::Instant::now() - since).as_secs_f64() * duration_inv;
-            let temp = f64::powf(temp0, 1.0 - time) * f64::powf(temp1, time);
-            inv_temp = 1.0 / temp;
-
-            if time >= 1.0 {
-                break;
-            }
-        }
-
-        // 変形
-        if rng.gen_bool(0.5) {
-            if solution.stamps.len() >= Input::K {
-                continue;
-            }
-
-            let row = rng.gen_range(0..Input::N - 2);
-            let col = rng.gen_range(0..Input::N - 2);
-            let coord = Coord::new(row, col);
-            let stamp = rng.gen_range(0..Input::M);
-
-            solution.board.stamp(&input.stamps[stamp], coord);
-
-            // スコア計算
-            let new_score = solution.calc_score();
-            let score_diff = new_score - current_score;
-
-            if score_diff >= 0 || rng.gen_bool(f64::exp(score_diff as f64 * inv_temp)) {
-                // 解の更新
-                current_score = new_score;
-                accepted_count += 1;
-                solution.stamps.push((coord, stamp));
-
-                if best_score.change_max(current_score) {
-                    best_solution = solution.clone();
-                    update_count += 1;
-                }
-            } else {
-                solution.board.revert(&input.stamps[stamp], coord);
-            }
-
-            valid_iter += 1;
-        } else {
-            if solution.stamps.is_empty() {
-                continue;
-            }
-
-            let index = rng.gen_range(0..solution.stamps.len());
-            let (coord, stamp) = solution.stamps[index];
-
-            solution.board.revert(&input.stamps[stamp], coord);
-
-            // スコア計算
-            let new_score = solution.calc_score();
-            let score_diff = new_score - current_score;
-
-            if score_diff >= 0 || rng.gen_bool(f64::exp(score_diff as f64 * inv_temp)) {
-                // 解の更新
-                current_score = new_score;
-                accepted_count += 1;
-                solution.stamps.swap_remove(index);
-
-                if best_score.change_max(current_score) {
-                    best_solution = solution.clone();
-                    update_count += 1;
-                }
-            } else {
-                solution.board.stamp(&input.stamps[stamp], coord);
-            }
-
-            valid_iter += 1;
-        }
-    }
-
-    eprintln!("===== annealing =====");
-    eprintln!("init score : {}", init_score);
-    eprintln!("score      : {}", best_score);
-    eprintln!("all iter   : {}", all_iter);
-    eprintln!("valid iter : {}", valid_iter);
-    eprintln!("accepted   : {}", accepted_count);
-    eprintln!("updated    : {}", update_count);
-    eprintln!("");
-
-    best_solution
 }
 
 mod grid {
