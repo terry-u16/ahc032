@@ -409,6 +409,10 @@ impl beam::ActGen<SmallState> for ActionGenerator {
                         sum += (src + tgt).val() as i64;
                     }
 
+                    if sum < 800000000 * 9 {
+                        continue;
+                    }
+
                     let score = prev_score + sum;
 
                     let new_state = SmallState {
@@ -440,6 +444,10 @@ impl beam::ActGen<SmallState> for ActionGenerator {
                     sum += (v0 + stamp[C0]).val() as i64;
                     sum += (v1 + stamp[C1]).val() as i64;
                     sum += (v2 + stamp[C2]).val() as i64;
+
+                    if sum < 800000000 * 3 {
+                        continue;
+                    }
 
                     let score = prev_score + sum;
 
@@ -474,6 +482,10 @@ impl beam::ActGen<SmallState> for ActionGenerator {
                     sum += (v1 + stamp[C1]).val() as i64;
                     sum += (v2 + stamp[C2]).val() as i64;
 
+                    if sum < 800000000 * 3 {
+                        continue;
+                    }
+
                     let score = prev_score + sum;
 
                     let new_state = SmallState {
@@ -496,6 +508,10 @@ impl beam::ActGen<SmallState> for ActionGenerator {
                     sum += (v0 + stamp[C0]).val() as i64;
 
                     let score = prev_score + sum;
+
+                    if sum < 850000000 {
+                        continue;
+                    }
 
                     let new_state = SmallState {
                         score,
@@ -523,7 +539,7 @@ fn main() {
     let mut beam = beam::BeamSearch::new(large_state, small_state, action_generator);
 
     let deduplicator = NoOpDeduplicator;
-    let beam_width = beam::BayesianBeamWidthSuggester::new(49, 2, 1.75, 3000, 100, 5000, 1);
+    let beam_width = beam::BayesianBeamWidthSuggester::new(49, 2, 1.5, 20000, 100, 20000, 1);
     let (actions, _) = beam.run(49, beam_width, deduplicator);
 
     let mut result = vec![];
