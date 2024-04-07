@@ -338,18 +338,27 @@ impl beam::ActGen<SmallState> for ActionGenerator {
 
         if coord.row == 6 && coord.col == 6 {
             let remaining_ops = (large_state.input.max_ops[turn] - small_state.stamp_count).min(3);
+            const CDS: [CoordDiff; 9] = [
+                CoordDiff::new(0, 0),
+                CoordDiff::new(0, 1),
+                CoordDiff::new(0, 2),
+                CoordDiff::new(1, 0),
+                CoordDiff::new(1, 1),
+                CoordDiff::new(1, 2),
+                CoordDiff::new(2, 0),
+                CoordDiff::new(2, 1),
+                CoordDiff::new(2, 2),
+            ];
+
+            let old_v = CDS.map(|cd| large_state.board.map[coord + cd]);
 
             for cnt in 0..=remaining_ops {
                 for (j, stamp) in self.input.mul_stamps[cnt].iter().enumerate() {
                     let mut sum = 0;
                     large_state.board.stamp(stamp, coord);
 
-                    for dr in 0..3 {
-                        for dc in 0..3 {
-                            let cdiff = CoordDiff::new(dr as isize, dc as isize);
-                            let c = coord + cdiff;
-                            sum += large_state.board.map[c].val() as i64;
-                        }
+                    for (src, tgt) in old_v.iter().zip(stamp.values.iter()) {
+                        sum += (src + tgt).val() as i64;
                     }
 
                     let score = prev_score + sum;
@@ -366,16 +375,24 @@ impl beam::ActGen<SmallState> for ActionGenerator {
                 }
             }
         } else if coord.row == 6 {
+            let remaining_ops = (large_state.input.max_ops[turn] - small_state.stamp_count).min(3);
+
             const CD1: CoordDiff = CoordDiff::new(1, 0);
             const CD2: CoordDiff = CoordDiff::new(2, 0);
+            const C0: Coord = Coord::new(0, 0);
+            const C1: Coord = Coord::new(1, 0);
+            const C2: Coord = Coord::new(2, 0);
+
+            let v0 = large_state.board.map[coord];
+            let v1 = large_state.board.map[coord + CD1];
+            let v2 = large_state.board.map[coord + CD2];
 
             for cnt in 0..=remaining_ops {
                 for (j, stamp) in self.input.mul_stamps[cnt].iter().enumerate() {
                     let mut sum = 0;
-                    large_state.board.stamp(stamp, coord);
-                    sum += large_state.board.map[coord].val() as i64;
-                    sum += large_state.board.map[coord + CD1].val() as i64;
-                    sum += large_state.board.map[coord + CD2].val() as i64;
+                    sum += (v0 + stamp[C0]).val() as i64;
+                    sum += (v1 + stamp[C1]).val() as i64;
+                    sum += (v2 + stamp[C2]).val() as i64;
 
                     let score = prev_score + sum;
 
@@ -387,20 +404,28 @@ impl beam::ActGen<SmallState> for ActionGenerator {
                     };
 
                     next_states.push(new_state);
-                    large_state.board.revert(stamp, coord);
                 }
             }
         } else if coord.col == 6 {
+            let remaining_ops = (large_state.input.max_ops[turn] - small_state.stamp_count).min(3);
+
             const CD1: CoordDiff = CoordDiff::new(0, 1);
             const CD2: CoordDiff = CoordDiff::new(0, 2);
+            const C0: Coord = Coord::new(0, 0);
+            const C1: Coord = Coord::new(0, 1);
+            const C2: Coord = Coord::new(0, 2);
+
+            let v0 = large_state.board.map[coord];
+            let v1 = large_state.board.map[coord + CD1];
+            let v2 = large_state.board.map[coord + CD2];
 
             for cnt in 0..=remaining_ops {
                 for (j, stamp) in self.input.mul_stamps[cnt].iter().enumerate() {
                     let mut sum = 0;
-                    large_state.board.stamp(stamp, coord);
-                    sum += large_state.board.map[coord].val() as i64;
-                    sum += large_state.board.map[coord + CD1].val() as i64;
-                    sum += large_state.board.map[coord + CD2].val() as i64;
+
+                    sum += (v0 + stamp[C0]).val() as i64;
+                    sum += (v1 + stamp[C1]).val() as i64;
+                    sum += (v2 + stamp[C2]).val() as i64;
 
                     let score = prev_score + sum;
 
@@ -412,15 +437,16 @@ impl beam::ActGen<SmallState> for ActionGenerator {
                     };
 
                     next_states.push(new_state);
-                    large_state.board.revert(stamp, coord);
                 }
             }
         } else {
+            const C0: Coord = Coord::new(0, 0);
+            let v0 = large_state.board.map[coord];
+
             for cnt in 0..=remaining_ops {
                 for (j, stamp) in self.input.mul_stamps[cnt].iter().enumerate() {
                     let mut sum = 0;
-                    large_state.board.stamp(stamp, coord);
-                    sum += large_state.board.map[coord].val() as i64;
+                    sum += (v0 + stamp[C0]).val() as i64;
 
                     let score = prev_score + sum;
 
@@ -432,7 +458,6 @@ impl beam::ActGen<SmallState> for ActionGenerator {
                     };
 
                     next_states.push(new_state);
-                    large_state.board.revert(stamp, coord);
                 }
             }
         }
@@ -451,7 +476,7 @@ fn main() {
     let mut beam = beam::BeamSearch::new(large_state, small_state, action_generator);
 
     let deduplicator = NoOpDeduplicator;
-    let beam_width = beam::FixedBeamWidthSuggester::new(2000);
+    let beam_width = beam::FixedBeamWidthSuggester::new(1800);
     let (actions, _) = beam.run(49, beam_width, deduplicator);
 
     let mut result = vec![];
