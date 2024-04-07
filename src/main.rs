@@ -162,23 +162,44 @@ fn main() {
     let mut board = input.init_map.clone();
     let mut result = vec![];
 
-    for row in 0..Input::N - 2 {
-        for col in 0..Input::N - 2 {
+    for row in 0..Input::N - 3 {
+        for col in 0..Input::N - 3 {
             let coord = Coord::new(row, col);
             let mut best_pos = None;
             let mut best_score = board[coord].val();
 
-            for stamp in 0..Input::M {
+            for stamp1 in 0..Input::M {
                 let c = Coord::new(0, 0);
-                let score = (board[coord] + input.stamps[stamp][c]).val();
+                let score = (board[coord] + input.stamps[stamp1][c]).val();
                 if best_score.change_max(score) {
-                    best_pos = Some((Coord::new(row, col), stamp));
+                    best_pos = Some((Coord::new(row, col), vec![stamp1]));
+                }
+            }
+
+            if best_score < 950000000 {
+                for stamp1 in 0..Input::M {
+                    let c = Coord::new(0, 0);
+                    let score = (board[coord] + input.stamps[stamp1][c]).val();
+                    if best_score.change_max(score) {
+                        best_pos = Some((Coord::new(row, col), vec![stamp1]));
+                    }
+
+                    for stamp2 in stamp1..Input::M {
+                        let score =
+                            (board[coord] + input.stamps[stamp1][c] + input.stamps[stamp2][c])
+                                .val();
+                        if best_score.change_max(score) {
+                            best_pos = Some((Coord::new(row, col), vec![stamp1, stamp2]));
+                        }
+                    }
                 }
             }
 
             if let Some((pos, stamp)) = best_pos {
-                board.stamp(&input.stamps[stamp], pos);
-                result.push((pos, stamp));
+                for s in stamp {
+                    board.stamp(&input.stamps[s], pos);
+                    result.push((pos, s));
+                }
             }
         }
     }
