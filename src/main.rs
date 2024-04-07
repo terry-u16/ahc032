@@ -274,12 +274,31 @@ impl LargeState {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct Action {
+    i: u32,
+    j: u32,
+}
+
+impl Action {
+    fn new(i: usize, j: usize) -> Self {
+        Self {
+            i: i as u32,
+            j: j as u32,
+        }
+    }
+
+    fn decompose(&self) -> (usize, usize) {
+        (self.i as usize, self.j as usize)
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 struct SmallState {
     score: i64,
     prev_score: i64,
     stamp_count: usize,
-    action: (Coord, usize, usize),
+    action: Action,
 }
 
 impl beam::SmallState for SmallState {
@@ -289,7 +308,7 @@ impl beam::SmallState for SmallState {
 
     type LargeState = LargeState;
 
-    type Action = (Coord, usize, usize);
+    type Action = Action;
 
     fn raw_score(&self) -> Self::Score {
         self.score
@@ -300,7 +319,8 @@ impl beam::SmallState for SmallState {
     }
 
     fn apply(&self, state: &mut Self::LargeState) {
-        let (pos, stamp0, stamp1) = self.action;
+        let (stamp0, stamp1) = self.action.decompose();
+        let pos = state.input.targets[state.turn];
         state
             .board
             .stamp(&state.input.mul_stamps[stamp0][stamp1], pos);
@@ -310,13 +330,15 @@ impl beam::SmallState for SmallState {
     }
 
     fn rollback(&self, state: &mut Self::LargeState) {
-        let (pos, stamp0, stamp1) = self.action;
+        state.turn -= 1;
+        state.score = self.prev_score;
+
+        let (stamp0, stamp1) = self.action.decompose();
+        let pos = state.input.targets[state.turn];
+
         state
             .board
             .revert(&state.input.mul_stamps[stamp0][stamp1], pos);
-
-        state.turn -= 1;
-        state.score = self.prev_score;
     }
 
     fn action(&self) -> Self::Action {
@@ -370,7 +392,7 @@ impl beam::ActGen<SmallState> for ActionGenerator {
                         score,
                         prev_score,
                         stamp_count: small_state.stamp_count + cnt,
-                        action: (coord, cnt, j),
+                        action: Action::new(cnt, j),
                     };
 
                     next_states.push(new_state);
@@ -402,7 +424,7 @@ impl beam::ActGen<SmallState> for ActionGenerator {
                         score,
                         prev_score,
                         stamp_count: small_state.stamp_count + cnt,
-                        action: (coord, cnt, j),
+                        action: Action::new(cnt, j),
                     };
 
                     next_states.push(new_state);
@@ -435,7 +457,7 @@ impl beam::ActGen<SmallState> for ActionGenerator {
                         score,
                         prev_score,
                         stamp_count: small_state.stamp_count + cnt,
-                        action: (coord, cnt, j),
+                        action: Action::new(cnt, j),
                     };
 
                     next_states.push(new_state);
@@ -456,7 +478,7 @@ impl beam::ActGen<SmallState> for ActionGenerator {
                         score,
                         prev_score,
                         stamp_count: small_state.stamp_count + cnt,
-                        action: (coord, cnt, j),
+                        action: Action::new(cnt, j),
                     };
 
                     next_states.push(new_state);
@@ -478,12 +500,14 @@ fn main() {
     let mut beam = beam::BeamSearch::new(large_state, small_state, action_generator);
 
     let deduplicator = NoOpDeduplicator;
-    let beam_width = beam::BayesianBeamWidthSuggester::new(49, 1, 1.9, 3000, 100, 5000, 2);
+    let beam_width = beam::BayesianBeamWidthSuggester::new(49, 1, 1.7, 3000, 100, 5000, 2);
     let (actions, _) = beam.run(49, beam_width, deduplicator);
 
     let mut result = vec![];
 
-    for (pos, i, j) in actions {
+    for (&action, &pos) in actions.iter().zip(input.targets.iter()) {
+        let (i, j) = action.decompose();
+
         for &index in input.mul_stamp_raw[i][j].iter() {
             result.push((pos, index));
         }
