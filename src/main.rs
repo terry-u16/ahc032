@@ -115,13 +115,13 @@ impl Input {
         for pivot in 0..Input::N - 2 {
             for row in pivot..Input::N - 2 {
                 targets.push(Coord::new(row, pivot));
-                max_turn += 1.55;
+                max_turn += 1.653;
                 max_ops.push(max_turn.ceil() as usize);
             }
 
             for col in pivot + 1..Input::N - 2 {
                 targets.push(Coord::new(pivot, col));
-                max_turn += 1.55;
+                max_turn += 1.653;
                 max_ops.push(max_turn.ceil() as usize);
             }
         }
@@ -337,6 +337,8 @@ impl beam::ActGen<SmallState> for ActionGenerator {
         let coord = self.input.targets[turn];
 
         if coord.row == 6 && coord.col == 6 {
+            let remaining_ops = (large_state.input.max_ops[turn] - small_state.stamp_count).min(3);
+
             for cnt in 0..=remaining_ops {
                 for (j, stamp) in self.input.mul_stamps[cnt].iter().enumerate() {
                     let mut sum = 0;
@@ -449,7 +451,7 @@ fn main() {
     let mut beam = beam::BeamSearch::new(large_state, small_state, action_generator);
 
     let deduplicator = NoOpDeduplicator;
-    let beam_width = beam::FixedBeamWidthSuggester::new(1000);
+    let beam_width = beam::FixedBeamWidthSuggester::new(2000);
     let (actions, _) = beam.run(49, beam_width, deduplicator);
 
     let mut result = vec![];
