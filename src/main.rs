@@ -112,9 +112,15 @@ impl Input {
         let mut max_ops = vec![];
         let mut max_turn = 0.0f64;
 
-        for row in 0..Input::N - 2 {
-            for col in 0..Input::N - 2 {
-                targets.push(Coord::new(row, col));
+        for pivot in 0..Input::N - 2 {
+            for row in pivot..Input::N - 2 {
+                targets.push(Coord::new(row, pivot));
+                max_turn += 1.55;
+                max_ops.push(max_turn.ceil() as usize);
+            }
+
+            for col in pivot + 1..Input::N - 2 {
+                targets.push(Coord::new(pivot, col));
                 max_turn += 1.55;
                 max_ops.push(max_turn.ceil() as usize);
             }
@@ -328,9 +334,9 @@ impl beam::ActGen<SmallState> for ActionGenerator {
         let turn = large_state.turn;
         let prev_score = large_state.score;
         let remaining_ops = (large_state.input.max_ops[turn] - small_state.stamp_count).min(2);
-        let coord = Coord::new(large_state.turn / 7, large_state.turn % 7);
+        let coord = self.input.targets[turn];
 
-        if turn == 48 {
+        if coord.row == 6 && coord.col == 6 {
             for cnt in 0..=remaining_ops {
                 for (j, stamp) in self.input.mul_stamps[cnt].iter().enumerate() {
                     let mut sum = 0;
@@ -357,7 +363,7 @@ impl beam::ActGen<SmallState> for ActionGenerator {
                     large_state.board.revert(stamp, coord);
                 }
             }
-        } else if turn >= 42 {
+        } else if coord.row == 6 {
             const CD1: CoordDiff = CoordDiff::new(1, 0);
             const CD2: CoordDiff = CoordDiff::new(2, 0);
 
@@ -382,7 +388,7 @@ impl beam::ActGen<SmallState> for ActionGenerator {
                     large_state.board.revert(stamp, coord);
                 }
             }
-        } else if large_state.turn % 7 == 6 {
+        } else if coord.col == 6 {
             const CD1: CoordDiff = CoordDiff::new(0, 1);
             const CD2: CoordDiff = CoordDiff::new(0, 2);
 
@@ -443,7 +449,7 @@ fn main() {
     let mut beam = beam::BeamSearch::new(large_state, small_state, action_generator);
 
     let deduplicator = NoOpDeduplicator;
-    let beam_width = beam::FixedBeamWidthSuggester::new(500);
+    let beam_width = beam::FixedBeamWidthSuggester::new(1000);
     let (actions, _) = beam.run(49, beam_width, deduplicator);
 
     let mut result = vec![];
