@@ -1,3 +1,5 @@
+use std::ops::Index;
+
 use ac_library::ModInt998244353;
 use grid::{Coord, CoordDiff, Map2d};
 #[allow(unused_imports)]
@@ -128,6 +130,14 @@ impl Board {
     }
 }
 
+impl Index<Coord> for Board {
+    type Output = ModInt998244353;
+
+    fn index(&self, index: Coord) -> &Self::Output {
+        &self.map[index]
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Stamp {
     values: Map2d<ModInt998244353>,
@@ -139,10 +149,39 @@ impl Stamp {
     }
 }
 
+impl Index<Coord> for Stamp {
+    type Output = ModInt998244353;
+
+    fn index(&self, index: Coord) -> &Self::Output {
+        &self.values[index]
+    }
+}
+
 fn main() {
     let input = Input::read_input();
     let mut board = input.init_map.clone();
     let mut result = vec![];
+
+    for row in 0..Input::N - 2 {
+        for col in 0..Input::N - 2 {
+            let coord = Coord::new(row, col);
+            let mut best_pos = None;
+            let mut best_score = board[coord].val();
+
+            for stamp in 0..Input::M {
+                let c = Coord::new(0, 0);
+                let score = (board[coord] + input.stamps[stamp][c]).val();
+                if best_score.change_max(score) {
+                    best_pos = Some((Coord::new(row, col), stamp));
+                }
+            }
+
+            if let Some((pos, stamp)) = best_pos {
+                board.stamp(&input.stamps[stamp], pos);
+                result.push((pos, stamp));
+            }
+        }
+    }
 
     for _ in 0..Input::K {
         let mut best_pos = None;
