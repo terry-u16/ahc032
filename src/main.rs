@@ -1,7 +1,7 @@
 use std::{ops::Index, time::Instant, vec};
 
 use ac_library::ModInt998244353;
-use grid::{Coord, CoordDiff, Map2d};
+use grid::{Coord, CoordDiff, CoordIndex, Map2d};
 #[allow(unused_imports)]
 use proconio::*;
 #[allow(unused_imports)]
@@ -36,8 +36,9 @@ struct Input {
     _stamps: Vec<Stamp>,
     mul_stamps: Vec<Vec<Stamp>>,
     mul_stamp_raw: Vec<Vec<Vec<usize>>>,
-    targets: Vec<Coord>,
+    targets: Vec<CoordIndex>,
     max_ops: Vec<usize>,
+    neigh_types: Vec<usize>,
     since: Instant,
 }
 
@@ -113,6 +114,7 @@ impl Input {
 
         let mut targets = vec![];
         let mut max_ops = vec![];
+        let mut neigh_types = vec![];
         let mut max_turn = 0.0f64;
 
         fn get_turn(row: usize, col: usize) -> f64 {
@@ -125,17 +127,31 @@ impl Input {
             }
         }
 
+        fn get_type(row: usize, col: usize) -> usize {
+            if row == 6 && col == 6 {
+                3
+            } else if row == 6 {
+                2
+            } else if col == 6 {
+                1
+            } else {
+                0
+            }
+        }
+
         for pivot in 0..Input::N - 2 {
             for row in pivot..Input::N - 2 {
-                targets.push(Coord::new(row, pivot));
+                targets.push(Coord::new(row, pivot).to_index(Input::N));
                 max_turn += get_turn(row, pivot);
                 max_ops.push(max_turn.ceil() as usize);
+                neigh_types.push(get_type(row, pivot));
             }
 
             for col in pivot + 1..Input::N - 2 {
-                targets.push(Coord::new(pivot, col));
+                targets.push(Coord::new(pivot, col).to_index(Input::N));
                 max_turn += get_turn(pivot, col);
                 max_ops.push(max_turn.ceil() as usize);
+                neigh_types.push(get_type(pivot, col));
             }
         }
 
@@ -146,6 +162,7 @@ impl Input {
             mul_stamp_raw,
             targets,
             max_ops,
+            neigh_types,
             since,
         }
     }
@@ -204,28 +221,32 @@ impl Board {
         Self { map }
     }
 
-    fn stamp(&mut self, stamp: &Stamp, coord: Coord) {
-        self.map[coord] += stamp.values[Coord::new(0, 0)];
-        self.map[coord + CoordDiff::new(0, 1)] += stamp.values[Coord::new(0, 1)];
-        self.map[coord + CoordDiff::new(0, 2)] += stamp.values[Coord::new(0, 2)];
-        self.map[coord + CoordDiff::new(1, 0)] += stamp.values[Coord::new(1, 0)];
-        self.map[coord + CoordDiff::new(1, 1)] += stamp.values[Coord::new(1, 1)];
-        self.map[coord + CoordDiff::new(1, 2)] += stamp.values[Coord::new(1, 2)];
-        self.map[coord + CoordDiff::new(2, 0)] += stamp.values[Coord::new(2, 0)];
-        self.map[coord + CoordDiff::new(2, 1)] += stamp.values[Coord::new(2, 1)];
-        self.map[coord + CoordDiff::new(2, 2)] += stamp.values[Coord::new(2, 2)];
+    fn stamp(&mut self, stamp: &Stamp, coord: CoordIndex) {
+        unsafe {
+            *self.map.map.get_unchecked_mut(coord.0) += stamp.values.map.get_unchecked(0);
+            *self.map.map.get_unchecked_mut(coord.0 + 1) += stamp.values.map.get_unchecked(1);
+            *self.map.map.get_unchecked_mut(coord.0 + 2) += stamp.values.map.get_unchecked(2);
+            *self.map.map.get_unchecked_mut(coord.0 + 9) += stamp.values.map.get_unchecked(3);
+            *self.map.map.get_unchecked_mut(coord.0 + 10) += stamp.values.map.get_unchecked(4);
+            *self.map.map.get_unchecked_mut(coord.0 + 11) += stamp.values.map.get_unchecked(5);
+            *self.map.map.get_unchecked_mut(coord.0 + 18) += stamp.values.map.get_unchecked(6);
+            *self.map.map.get_unchecked_mut(coord.0 + 19) += stamp.values.map.get_unchecked(7);
+            *self.map.map.get_unchecked_mut(coord.0 + 20) += stamp.values.map.get_unchecked(8);
+        }
     }
 
-    fn revert(&mut self, stamp: &Stamp, coord: Coord) {
-        self.map[coord] -= stamp.values[Coord::new(0, 0)];
-        self.map[coord + CoordDiff::new(0, 1)] -= stamp.values[Coord::new(0, 1)];
-        self.map[coord + CoordDiff::new(0, 2)] -= stamp.values[Coord::new(0, 2)];
-        self.map[coord + CoordDiff::new(1, 0)] -= stamp.values[Coord::new(1, 0)];
-        self.map[coord + CoordDiff::new(1, 1)] -= stamp.values[Coord::new(1, 1)];
-        self.map[coord + CoordDiff::new(1, 2)] -= stamp.values[Coord::new(1, 2)];
-        self.map[coord + CoordDiff::new(2, 0)] -= stamp.values[Coord::new(2, 0)];
-        self.map[coord + CoordDiff::new(2, 1)] -= stamp.values[Coord::new(2, 1)];
-        self.map[coord + CoordDiff::new(2, 2)] -= stamp.values[Coord::new(2, 2)];
+    fn revert(&mut self, stamp: &Stamp, coord: CoordIndex) {
+        unsafe {
+            *self.map.map.get_unchecked_mut(coord.0) -= stamp.values.map.get_unchecked(0);
+            *self.map.map.get_unchecked_mut(coord.0 + 1) -= stamp.values.map.get_unchecked(1);
+            *self.map.map.get_unchecked_mut(coord.0 + 2) -= stamp.values.map.get_unchecked(2);
+            *self.map.map.get_unchecked_mut(coord.0 + 9) -= stamp.values.map.get_unchecked(3);
+            *self.map.map.get_unchecked_mut(coord.0 + 10) -= stamp.values.map.get_unchecked(4);
+            *self.map.map.get_unchecked_mut(coord.0 + 11) -= stamp.values.map.get_unchecked(5);
+            *self.map.map.get_unchecked_mut(coord.0 + 18) -= stamp.values.map.get_unchecked(6);
+            *self.map.map.get_unchecked_mut(coord.0 + 19) -= stamp.values.map.get_unchecked(7);
+            *self.map.map.get_unchecked_mut(coord.0 + 20) -= stamp.values.map.get_unchecked(8);
+        }
     }
 }
 
@@ -362,7 +383,7 @@ impl beam::ActGen<SmallState> for ActionGenerator {
         let remaining_ops = (large_state.input.max_ops[turn] - small_state.stamp_count).min(2);
         let coord = self.input.targets[turn];
 
-        if coord.row == 6 && coord.col == 6 {
+        if self.input.neigh_types[turn] == 3 {
             let remaining_ops = (large_state.input.max_ops[turn] - small_state.stamp_count).min(4);
             const CDS: [CoordDiff; 9] = [
                 CoordDiff::new(0, 0),
@@ -376,7 +397,9 @@ impl beam::ActGen<SmallState> for ActionGenerator {
                 CoordDiff::new(2, 2),
             ];
 
-            let old_v = CDS.map(|cd| large_state.board.map[coord + cd]);
+            let old_v = CDS.map(|cd| {
+                large_state.board.map[(coord.to_coord(Input::N) + cd).to_index(Input::N)]
+            });
 
             for cnt in 0..=remaining_ops {
                 for (j, stamp) in self.input.mul_stamps[cnt].iter().enumerate() {
@@ -398,7 +421,7 @@ impl beam::ActGen<SmallState> for ActionGenerator {
                     next_states.push(new_state);
                 }
             }
-        } else if coord.row == 6 {
+        } else if self.input.neigh_types[turn] == 2 {
             let remaining_ops = (large_state.input.max_ops[turn] - small_state.stamp_count).min(3);
 
             const CD1: CoordDiff = CoordDiff::new(1, 0);
@@ -408,8 +431,8 @@ impl beam::ActGen<SmallState> for ActionGenerator {
             const C2: Coord = Coord::new(2, 0);
 
             let v0 = large_state.board.map[coord];
-            let v1 = large_state.board.map[coord + CD1];
-            let v2 = large_state.board.map[coord + CD2];
+            let v1 = large_state.board.map[(coord.to_coord(Input::N) + CD1).to_index(Input::N)];
+            let v2 = large_state.board.map[(coord.to_coord(Input::N) + CD2).to_index(Input::N)];
 
             for cnt in 0..=remaining_ops {
                 for (j, stamp) in self.input.mul_stamps[cnt].iter().enumerate() {
@@ -430,7 +453,7 @@ impl beam::ActGen<SmallState> for ActionGenerator {
                     next_states.push(new_state);
                 }
             }
-        } else if coord.col == 6 {
+        } else if self.input.neigh_types[turn] == 1 {
             let remaining_ops = (large_state.input.max_ops[turn] - small_state.stamp_count).min(3);
 
             const CD1: CoordDiff = CoordDiff::new(0, 1);
@@ -440,8 +463,8 @@ impl beam::ActGen<SmallState> for ActionGenerator {
             const C2: Coord = Coord::new(0, 2);
 
             let v0 = large_state.board.map[coord];
-            let v1 = large_state.board.map[coord + CD1];
-            let v2 = large_state.board.map[coord + CD2];
+            let v1 = large_state.board.map[(coord.to_coord(Input::N) + CD1).to_index(Input::N)];
+            let v2 = large_state.board.map[(coord.to_coord(Input::N) + CD2).to_index(Input::N)];
 
             for cnt in 0..=remaining_ops {
                 for (j, stamp) in self.input.mul_stamps[cnt].iter().enumerate() {
@@ -500,7 +523,7 @@ fn main() {
     let mut beam = beam::BeamSearch::new(large_state, small_state, action_generator);
 
     let deduplicator = NoOpDeduplicator;
-    let beam_width = beam::BayesianBeamWidthSuggester::new(49, 1, 1.7, 3000, 100, 5000, 2);
+    let beam_width = beam::BayesianBeamWidthSuggester::new(49, 2, 1.75, 3000, 100, 5000, 1);
     let (actions, _) = beam.run(49, beam_width, deduplicator);
 
     let mut result = vec![];
@@ -516,6 +539,7 @@ fn main() {
     println!("{}", result.len());
 
     for &(pos, stamp) in result.iter() {
+        let pos = pos.to_coord(Input::N);
         println!("{} {} {}", stamp, pos.row, pos.col);
     }
 
@@ -648,7 +672,7 @@ mod grid {
     #[derive(Debug, Clone)]
     pub struct Map2d<T> {
         pub size: usize,
-        map: Vec<T>,
+        pub map: Vec<T>,
     }
 
     #[allow(dead_code)]
@@ -680,15 +704,14 @@ mod grid {
 
         #[inline]
         fn index(&self, coordinate: Coord) -> &Self::Output {
-            &self[coordinate.to_index(self.size)]
+            unsafe { self.map.get_unchecked(coordinate.to_index(self.size).0) }
         }
     }
 
     impl<T> std::ops::IndexMut<Coord> for Map2d<T> {
         #[inline]
         fn index_mut(&mut self, coordinate: Coord) -> &mut Self::Output {
-            let size = self.size;
-            &mut self[coordinate.to_index(size)]
+            unsafe { self.map.get_unchecked_mut(coordinate.to_index(self.size).0) }
         }
     }
 
@@ -696,14 +719,14 @@ mod grid {
         type Output = T;
 
         fn index(&self, index: CoordIndex) -> &Self::Output {
-            &self.map[index.0]
+            unsafe { self.map.get_unchecked(index.0) }
         }
     }
 
     impl<T> std::ops::IndexMut<CoordIndex> for Map2d<T> {
         #[inline]
         fn index_mut(&mut self, index: CoordIndex) -> &mut Self::Output {
-            &mut self.map[index.0]
+            unsafe { self.map.get_unchecked_mut(index.0) }
         }
     }
 }
