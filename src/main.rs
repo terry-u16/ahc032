@@ -152,21 +152,49 @@ fn main() {
             for col in 0..Input::N - 2 {
                 let c = Coord::new(row, col);
 
-                for t in 0..Input::M {
-                    board.stamp(&input.stamps[t], c);
+                if result.len() + 1 <= Input::K {
+                    for t1 in 0..Input::M {
+                        board.stamp(&input.stamps[t1], c);
 
-                    if best_score.change_max(board.calc_score()) {
-                        best_pos = Some((c, t));
+                        if best_score.change_max(board.calc_score()) {
+                            best_pos = Some((c, vec![t1]));
+                        }
+
+                        if result.len() + 2 <= Input::K {
+                            for t2 in t1..Input::M {
+                                board.stamp(&input.stamps[t2], c);
+
+                                if best_score.change_max(board.calc_score()) {
+                                    best_pos = Some((c, vec![t1, t2]));
+                                }
+
+                                if result.len() + 3 <= Input::K {
+                                    for t3 in t2..Input::M {
+                                        board.stamp(&input.stamps[t3], c);
+
+                                        if best_score.change_max(board.calc_score()) {
+                                            best_pos = Some((c, vec![t1, t2, t3]));
+                                        }
+
+                                        board.revert(&input.stamps[t3], c);
+                                    }
+                                }
+
+                                board.revert(&input.stamps[t2], c);
+                            }
+                        }
+
+                        board.revert(&input.stamps[t1], c);
                     }
-
-                    board.revert(&input.stamps[t], c);
                 }
             }
         }
 
         if let Some((pos, stamp)) = best_pos {
-            board.stamp(&input.stamps[stamp], pos);
-            result.push((pos, stamp));
+            for &stamp in stamp.iter() {
+                board.stamp(&input.stamps[stamp], pos);
+                result.push((pos, stamp));
+            }
         }
     }
 
