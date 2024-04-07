@@ -1,4 +1,4 @@
-use std::{ops::Index, vec};
+use std::{ops::Index, time::Instant, vec};
 
 use ac_library::ModInt998244353;
 use grid::{Coord, CoordDiff, Map2d};
@@ -38,6 +38,7 @@ struct Input {
     mul_stamp_raw: Vec<Vec<Vec<usize>>>,
     targets: Vec<Coord>,
     max_ops: Vec<usize>,
+    since: Instant,
 }
 
 impl Input {
@@ -55,6 +56,8 @@ impl Input {
         input! {
             raw_map: [[u32; n]; n]
         }
+
+        let since = Instant::now();
 
         let mut init_map = Map2d::new_with(ModInt998244353::new(0), n);
 
@@ -143,6 +146,7 @@ impl Input {
             mul_stamp_raw,
             targets,
             max_ops,
+            since,
         }
     }
 
@@ -328,7 +332,7 @@ impl beam::ActGen<SmallState> for ActionGenerator {
     fn generate(
         &self,
         small_state: &SmallState,
-        large_state: &mut <SmallState as beam::SmallState>::LargeState,
+        large_state: &<SmallState as beam::SmallState>::LargeState,
         next_states: &mut Vec<SmallState>,
     ) {
         let turn = large_state.turn;
@@ -355,7 +359,6 @@ impl beam::ActGen<SmallState> for ActionGenerator {
             for cnt in 0..=remaining_ops {
                 for (j, stamp) in self.input.mul_stamps[cnt].iter().enumerate() {
                     let mut sum = 0;
-                    large_state.board.stamp(stamp, coord);
 
                     for (src, tgt) in old_v.iter().zip(stamp.values.iter()) {
                         sum += (src + tgt).val() as i64;
@@ -371,7 +374,6 @@ impl beam::ActGen<SmallState> for ActionGenerator {
                     };
 
                     next_states.push(new_state);
-                    large_state.board.revert(stamp, coord);
                 }
             }
         } else if coord.row == 6 {
@@ -476,7 +478,7 @@ fn main() {
     let mut beam = beam::BeamSearch::new(large_state, small_state, action_generator);
 
     let deduplicator = NoOpDeduplicator;
-    let beam_width = beam::FixedBeamWidthSuggester::new(1800);
+    let beam_width = beam::BayesianBeamWidthSuggester::new(49, 1, 1.98, 3000, 100, 10000, 1);
     let (actions, _) = beam.run(49, beam_width, deduplicator);
 
     let mut result = vec![];
@@ -492,6 +494,8 @@ fn main() {
     for &(pos, stamp) in result.iter() {
         println!("{} {} {}", stamp, pos.row, pos.col);
     }
+
+    eprintln!("Elapsed: {:?}", input.since.elapsed());
 }
 
 mod grid {
@@ -737,6 +741,8 @@ mod beam {
 
     use rustc_hash::FxHashSet;
 
+    use crate::bayesian::GaussInverseGamma;
+
     /// コピー可能な小さい状態を表すトレイト
     pub trait SmallState {
         type Score: Ord + Display;
@@ -769,12 +775,7 @@ mod beam {
     /// 現在のstateからの遷移先を列挙するトレイト
     pub trait ActGen<S: SmallState> {
         /// 現在のstateからの遷移先をnext_satesに格納する
-        fn generate(
-            &self,
-            small_state: &S,
-            large_state: &mut S::LargeState,
-            next_states: &mut Vec<S>,
-        );
+        fn generate(&self, small_state: &S, large_state: &S::LargeState, next_states: &mut Vec<S>);
     }
 
     /// ビームの次の遷移候補
@@ -879,7 +880,7 @@ mod beam {
         }
     }
 
-    /// ベイズ推定+カルマンフィルタにより適切なビーム幅を計算するBeamWidthSuggester。
+    /// ベイズ推定により適切なビーム幅を計算するBeamWidthSuggester。
     /// 1ターンあたりの実行時間が正規分布に従うと仮定し、+3σ分の余裕を持ってビーム幅を決める。
     ///
     /// ## モデル
@@ -924,14 +925,8 @@ mod beam {
     /// - したがって、残り時間を `T_i` として `W(M_i*μ_i+3(σ_i√M_i))≦T_i` となる最大の `W` を求めればよく、 `W=floor(T_i/(M_i*μ_i+3(σ_i√M_i)))` となる。
     /// - 最後に、念のため適当な `W_min` , `W_max` でclampしておく。
     pub struct BayesianBeamWidthSuggester {
-        /// ビーム幅1あたりの所要時間の平均値の平均値μ_i（逐次更新される）
-        mean_sec: f64,
-        /// ビーム幅1あたりの所要時間の平均値の分散σ_i^2（逐次更新される）
-        variance_sec: f64,
-        /// 1ターンごとに状態に作用するノイズの大きさを表す分散α^2（定数）
-        variance_state_sec: f64,
-        /// 観測時に乗るノイズの大きさを表す分散β^2（定数）
-        variance_observe_sec: f64,
+        /// ターンごとの所要時間が従う正規分布の(平均, 標準偏差)の事前分布
+        prior_dist: GaussInverseGamma,
         /// 問題の実行時間制限T
         time_limit_sec: f64,
         /// 現在のターン数i
@@ -940,6 +935,8 @@ mod beam {
         max_turn: usize,
         /// ウォームアップターン数（最初のXターン分の情報は採用せずに捨てる）
         warmup_turn: usize,
+        /// 所要時間を記憶するターン数の目安
+        max_memory_turn: usize,
         /// 最小ビーム幅W_min
         min_beam_width: usize,
         /// 最大ビーム幅W_max
@@ -979,13 +976,12 @@ mod beam {
 
             let mean_sec = time_limit_sec / (max_turn * standard_beam_width) as f64;
 
-            // 雑にσ=10%ズレると仮定
-            let stddev_sec = 0.1 * mean_sec;
-            let variance_sec = stddev_sec * stddev_sec;
-            let stddev_state_sec = 0.01 * mean_sec;
-            let variance_state_sec = stddev_state_sec * stddev_state_sec;
-            let stddev_observe_sec = 0.05 * mean_sec;
-            let variance_observe_sec = stddev_observe_sec * stddev_observe_sec;
+            // 雑にσ=20%ズレると仮定
+            let stddev_sec = 0.2 * mean_sec;
+            let prior_dist = GaussInverseGamma::from_psuedo_observation(mean_sec, stddev_sec, 3);
+
+            // 直近20%程度のターン数の移動平均的な所要時間を参考にする
+            let max_memory_turn = max_turn / 5;
 
             eprintln!(
                 "standard beam width: {}, time limit: {:.3}s",
@@ -993,16 +989,14 @@ mod beam {
             );
 
             Self {
-                mean_sec,
-                variance_sec,
+                prior_dist,
                 time_limit_sec,
-                variance_state_sec,
-                variance_observe_sec,
                 current_turn: 0,
                 min_beam_width,
                 max_beam_width,
                 verbose_interval,
                 max_turn,
+                max_memory_turn,
                 warmup_turn,
                 current_beam_width: 0,
                 start_time: Instant::now(),
@@ -1010,19 +1004,15 @@ mod beam {
             }
         }
 
-        fn update_state(&mut self) {
-            // N(0, α^2)のノイズが乗る
-            self.variance_sec += self.variance_state_sec;
-        }
-
         fn update_distribution(&mut self, duration_sec: f64) {
-            let old_mean = self.mean_sec;
-            let old_variance = self.variance_sec;
-            let noise_variance = self.variance_observe_sec;
+            self.prior_dist.update(duration_sec);
 
-            self.mean_sec = (old_mean * noise_variance + old_variance * duration_sec)
-                / (noise_variance + old_variance);
-            self.variance_sec = old_variance * noise_variance / (old_variance + noise_variance);
+            // ベイズ推定の疑似観測数にリミットをかける
+            // （序盤と終盤で実行時間が異なるケースで、序盤の観測値に引きずられないようにするため）
+            if self.prior_dist.get_pseudo_observation_count() >= self.max_memory_turn as f64 {
+                self.prior_dist
+                    .set_pseudo_observation_count(self.max_memory_turn as f64);
+            }
         }
 
         fn calc_safe_beam_width(&self) -> usize {
@@ -1030,34 +1020,32 @@ mod beam {
             let elapsed_time = (Instant::now() - self.start_time).as_secs_f64();
             let remaining_time = self.time_limit_sec - elapsed_time;
 
-            // 平均値の分散σ^2と観測ノイズβ^2が乗ってくると考える
-            let variance_total = self.variance_sec + self.variance_observe_sec;
+            let (mean, std_dev) = self.prior_dist.expected();
+            let variance = std_dev * std_dev;
 
-            // N(ξ, η^2)からのサンプリングをK回繰り返すとN(Kξ, Kη^2)となる（はず）
-            let mean = remaining_turn * self.mean_sec;
-            let variance = remaining_turn * variance_total;
-            let stddev = variance.sqrt();
+            let mean_remaining = remaining_turn * mean;
+            let variance_remaining = remaining_turn * variance;
+            let std_dev_remaining = variance_remaining.sqrt();
 
-            // 3σの余裕を持たせる
-            const SIGMA_COEF: f64 = 3.0;
-            let needed_time_per_width = mean + SIGMA_COEF * stddev;
+            // 2σの余裕を持たせる
+            const SIGMA_COEF: f64 = 2.0;
+            let needed_time_per_width = mean_remaining + SIGMA_COEF * std_dev_remaining;
             let beam_width = ((remaining_time / needed_time_per_width) as usize)
-                .max(self.min_beam_width)
-                .min(self.max_beam_width);
+                .clamp(self.min_beam_width, self.max_beam_width);
 
             if self.verbose_interval != 0 && self.current_turn % self.verbose_interval == 0 {
-                let stddev_per_run = (self.max_turn as f64 * variance_total).sqrt();
-                let stddev_per_turn = variance_total.sqrt();
+                let stddev_per_run = (self.max_turn as f64 * variance).sqrt();
+                let stddev_per_turn = variance.sqrt();
 
                 eprintln!(
-                "turn: {:4}, beam width: {:4}, pase: {:.3}±{:.3}ms/run, iter time: {:.3}±{:.3}ms",
-                self.current_turn,
-                beam_width,
-                self.mean_sec * (beam_width * self.max_turn) as f64 * 1e3,
-                stddev_per_run * beam_width as f64 * 1e3,
-                self.mean_sec * beam_width as f64 * 1e3,
-                stddev_per_turn * beam_width as f64 * 1e3
-            );
+                    "turn:{:5}, beam width:{:5}, pase:{:7.1} ±{:6.2}ms/run,{:6.3} ±{:6.3}ms/turn",
+                    self.current_turn,
+                    beam_width,
+                    mean * (beam_width * self.max_turn) as f64 * 1e3,
+                    stddev_per_run * beam_width as f64 * 1e3,
+                    mean * beam_width as f64 * 1e3,
+                    stddev_per_turn * beam_width as f64 * 1e3
+                );
             }
 
             beam_width
@@ -1074,7 +1062,6 @@ mod beam {
             if self.current_turn >= self.warmup_turn {
                 let elapsed = (Instant::now() - self.last_time).as_secs_f64();
                 let elapsed_per_beam = elapsed / self.current_beam_width as f64;
-                self.update_state();
                 self.update_distribution(elapsed_per_beam);
             }
 
@@ -1348,7 +1335,7 @@ mod beam {
             if self.nodes[self.current_index].child == NodeIndex::NULL {
                 self.act_gen.generate(
                     &self.nodes[self.current_index].small_state,
-                    &mut self.state,
+                    &self.state,
                     &mut self.action_buffer,
                 );
 
@@ -1545,7 +1532,7 @@ mod beam {
             fn generate(
                 &self,
                 small_state: &SmallState,
-                large_state: &mut LargeState,
+                large_state: &LargeState,
                 next_states: &mut Vec<SmallState>,
             ) {
                 if small_state.visited_count == self.input.n {
@@ -1592,6 +1579,128 @@ mod beam {
             eprintln!("actions: {:?}", actions);
             assert_eq!(score, 10);
             assert!(actions == vec![1, 3, 2, 0] || actions == vec![2, 3, 1, 0]);
+        }
+    }
+}
+
+mod bayesian {
+    use rand::Rng;
+    use rand_distr::{Distribution, Gamma, Normal};
+
+    /// 正規-ガンマ分布を表す構造体。
+    ///
+    /// 正規-逆ガンマ分布  NG(mu, lambda, alpha, beta) = N(mu, (lambda * precision)^-1) * G(alpha, beta) を表す構造体。
+    /// ベイズ推定により、正規分布の平均と精度の事後分布を更新することができる。
+    #[derive(Debug, Clone, Copy)]
+    pub struct GaussInverseGamma {
+        mu: f64,
+        lambda: f64,
+        alpha: f64,
+        beta: f64,
+    }
+
+    impl GaussInverseGamma {
+        /// 正規-ガンマ分布 NG(mu, lambda, alpha, beta) を生成する。
+        ///
+        /// # Arguments
+        ///
+        /// * `mu` - 正規分布の平均の事前分布の平均
+        /// * `lambda` - サンプリングされた精度と正規分布の平均の精度との比
+        /// * `alpha` - **精度 (分散の逆数)** を表すガンマ分布の形状パラメータ
+        /// * `beta` - **精度 (分散の逆数)** を表すガンマ分布の尺度パラメータ
+        ///
+        /// # Note
+        ///
+        /// * `lambda` は正規分布の平均の事前分布の疑似観測回数と解釈することができる。
+        /// * `beta` は正規分布の精度の事前分布の疑似観測回数の2倍と解釈することができる。
+        pub fn new(mu: f64, lambda: f64, alpha: f64, beta: f64) -> Self {
+            assert!(!mu.is_nan(), "mu is NaN");
+            assert!(lambda > 0.0, "lambda is not positive");
+            assert!(alpha > 0.0, "alpha is not positive");
+            assert!(beta > 0.0, "beta is not positive");
+
+            Self {
+                mu,
+                lambda,
+                alpha,
+                beta,
+            }
+        }
+
+        /// 対象とする正規分布からの疑似観測値から正規-ガンマ分布 NG(mu, lambda, alpha, beta) を生成する。
+        ///
+        /// # Arguments
+        ///
+        /// - `mean` - 疑似観測値の期待値
+        /// - `std_dev` - 疑似観測値の標準偏差
+        /// - `pseudo_observation_count` - 疑似観測回数
+        pub fn from_psuedo_observation(
+            mean: f64,
+            std_dev: f64,
+            pseudo_observation_count: usize,
+        ) -> Self {
+            assert!(std_dev > 0.0, "expected_std_dev is not positive");
+            assert!(
+                pseudo_observation_count > 0,
+                "pseudo_observation_count is not positive"
+            );
+
+            let expected_variance = std_dev * std_dev;
+            let expected_precision = 1.0 / expected_variance;
+
+            let mu = mean;
+            let lambda = pseudo_observation_count as f64;
+            let alpha = (pseudo_observation_count * 2) as f64;
+
+            // 精度の期待値E[p] = alpha / beta より、 beta = alpha / E[p]
+            let beta = alpha / expected_precision;
+
+            Self::new(mu, lambda, alpha, beta)
+        }
+
+        /// 観測値xを元にしてベイズ更新を行う。
+        pub fn update(&mut self, x: f64) {
+            let mu = (x + self.lambda * self.mu) / (self.lambda + 1.0);
+            let lambda = self.lambda + 1.0;
+            let alpha = self.alpha + 0.5;
+            let dev2 = (x - self.mu) * (x - self.mu);
+            let beta = self.beta + 0.5 * (self.lambda * dev2) / (self.lambda + 1.0);
+
+            self.mu = mu;
+            self.lambda = lambda;
+            self.alpha = alpha;
+            self.beta = beta;
+        }
+
+        /// (平均, 標準偏差) の期待値を取得する。
+        pub fn expected(&self) -> (f64, f64) {
+            let expected_precision = self.alpha / self.beta;
+            let expected_variance = 1.0 / expected_precision;
+            let expected_std_dev = expected_variance.sqrt();
+            (self.mu, expected_std_dev)
+        }
+
+        pub fn get_pseudo_observation_count(&self) -> f64 {
+            self.lambda
+        }
+
+        pub fn set_pseudo_observation_count(&mut self, pseudo_observation_count: f64) {
+            self.lambda = pseudo_observation_count;
+            self.alpha = pseudo_observation_count * 0.5;
+        }
+    }
+
+    impl Distribution<(f64, f64)> for GaussInverseGamma {
+        fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> (f64, f64) {
+            // ガンマ分布から精度をサンプリング
+            let precision = rng.sample(Gamma::new(self.alpha, 1.0 / self.beta).unwrap());
+            let std_dev = 1.0 / precision.sqrt();
+
+            // 正規分布から平均をサンプリング
+            let std_dev_mean = 1.0 / (precision * self.lambda).sqrt();
+            let mean = rng.sample(Normal::new(self.mu, std_dev_mean).unwrap());
+
+            (mean, std_dev)
         }
     }
 }
