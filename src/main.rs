@@ -112,16 +112,26 @@ impl Input {
         let mut max_ops = vec![];
         let mut max_turn = 0.0f64;
 
+        fn get_turn(row: usize, col: usize) -> f64 {
+            if row == 6 && col == 6 {
+                3.0
+            } else if row == 6 || col == 6 {
+                2.0
+            } else {
+                1.5
+            }
+        }
+
         for pivot in 0..Input::N - 2 {
             for row in pivot..Input::N - 2 {
                 targets.push(Coord::new(row, pivot));
-                max_turn += 1.653;
+                max_turn += get_turn(row, pivot);
                 max_ops.push(max_turn.ceil() as usize);
             }
 
             for col in pivot + 1..Input::N - 2 {
                 targets.push(Coord::new(pivot, col));
-                max_turn += 1.653;
+                max_turn += get_turn(pivot, col);
                 max_ops.push(max_turn.ceil() as usize);
             }
         }
