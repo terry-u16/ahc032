@@ -33,7 +33,7 @@ impl<T: PartialOrd> ChangeMinMax for T {
 #[derive(Debug, Clone)]
 struct Input {
     init_map: Board,
-    stamps: Vec<Stamp>,
+    _stamps: Vec<Stamp>,
     mul_stamps: Vec<Vec<Stamp>>,
     mul_stamp_raw: Vec<Vec<Vec<usize>>>,
     targets: Vec<Coord>,
@@ -43,7 +43,7 @@ struct Input {
 impl Input {
     const N: usize = 9;
     const M: usize = 20;
-    const K: usize = 81;
+    const _K: usize = 81;
 
     fn read_input() -> Self {
         input! {
@@ -138,7 +138,7 @@ impl Input {
 
         Self {
             init_map: Board::new(init_map),
-            stamps,
+            _stamps: stamps,
             mul_stamps,
             mul_stamp_raw,
             targets,
@@ -198,16 +198,6 @@ struct Board {
 impl Board {
     fn new(map: Map2d<ModInt998244353>) -> Self {
         Self { map }
-    }
-
-    fn calc_score(&self) -> i64 {
-        let mut score = 0;
-
-        for value in self.map.iter() {
-            score += value.val() as i64;
-        }
-
-        score
     }
 
     fn stamp(&mut self, stamp: &Stamp, coord: Coord) {
