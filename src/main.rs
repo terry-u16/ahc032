@@ -341,7 +341,7 @@ impl beam::ActGen<SmallState> for ActionGenerator {
         let coord = self.input.targets[turn];
 
         if coord.row == 6 && coord.col == 6 {
-            let remaining_ops = (large_state.input.max_ops[turn] - small_state.stamp_count).min(3);
+            let remaining_ops = (large_state.input.max_ops[turn] - small_state.stamp_count).min(4);
             const CDS: [CoordDiff; 9] = [
                 CoordDiff::new(0, 0),
                 CoordDiff::new(0, 1),
@@ -1027,8 +1027,8 @@ mod beam {
             let variance_remaining = remaining_turn * variance;
             let std_dev_remaining = variance_remaining.sqrt();
 
-            // 2σの余裕を持たせる
-            const SIGMA_COEF: f64 = 2.0;
+            // 3σの余裕を持たせる
+            const SIGMA_COEF: f64 = 3.0;
             let needed_time_per_width = mean_remaining + SIGMA_COEF * std_dev_remaining;
             let beam_width = ((remaining_time / needed_time_per_width) as usize)
                 .clamp(self.min_beam_width, self.max_beam_width);
