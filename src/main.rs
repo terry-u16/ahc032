@@ -176,7 +176,7 @@ fn main() {
                 }
             }
 
-            if best_score < 950000000 {
+            if best_score < 930000000 {
                 for stamp1 in 0..Input::M {
                     let c = Coord::new(0, 0);
                     let score = (board[coord] + input.stamps[stamp1][c]).val();
@@ -204,58 +204,144 @@ fn main() {
         }
     }
 
-    for _ in 0..Input::K {
+    for row in 0..6 {
+        let col = 6;
+
+        let coord1 = Coord::new(row, col);
+        let coord2 = Coord::new(row, col + 1);
+        let coord3 = Coord::new(row, col + 2);
         let mut best_pos = None;
-        let mut best_score = board.calc_score();
+        let mut best_score = board[coord1].val() + board[coord2].val() + board[coord3].val();
 
-        for row in 0..Input::N - 2 {
-            for col in 0..Input::N - 2 {
-                let c = Coord::new(row, col);
+        for stamp1 in 0..Input::M {
+            let c1 = Coord::new(0, 0);
+            let c2 = Coord::new(0, 1);
+            let c3 = Coord::new(0, 2);
+            let score = (board[coord1] + input.stamps[stamp1][c1]).val()
+                + (board[coord2] + input.stamps[stamp1][c2]).val()
+                + (board[coord3] + input.stamps[stamp1][c3]).val();
 
-                if result.len() + 1 <= Input::K {
-                    for t1 in 0..Input::M {
-                        board.stamp(&input.stamps[t1], c);
+            if best_score.change_max(score) {
+                best_pos = Some((Coord::new(row, col), vec![stamp1]));
+            }
 
-                        if best_score.change_max(board.calc_score()) {
-                            best_pos = Some((c, vec![t1]));
-                        }
+            for stamp2 in stamp1..Input::M {
+                let score = (board[coord1] + input.stamps[stamp1][c1] + input.stamps[stamp2][c1])
+                    .val()
+                    + (board[coord2] + input.stamps[stamp1][c2] + input.stamps[stamp2][c2]).val()
+                    + (board[coord3] + input.stamps[stamp1][c3] + input.stamps[stamp2][c3]).val();
 
-                        if result.len() + 2 <= Input::K {
-                            for t2 in t1..Input::M {
-                                board.stamp(&input.stamps[t2], c);
-
-                                if best_score.change_max(board.calc_score()) {
-                                    best_pos = Some((c, vec![t1, t2]));
-                                }
-
-                                if result.len() + 3 <= Input::K {
-                                    for t3 in t2..Input::M {
-                                        board.stamp(&input.stamps[t3], c);
-
-                                        if best_score.change_max(board.calc_score()) {
-                                            best_pos = Some((c, vec![t1, t2, t3]));
-                                        }
-
-                                        board.revert(&input.stamps[t3], c);
-                                    }
-                                }
-
-                                board.revert(&input.stamps[t2], c);
-                            }
-                        }
-
-                        board.revert(&input.stamps[t1], c);
-                    }
+                if best_score.change_max(score) {
+                    best_pos = Some((Coord::new(row, col), vec![stamp1, stamp2]));
                 }
             }
         }
 
         if let Some((pos, stamp)) = best_pos {
-            for &stamp in stamp.iter() {
-                board.stamp(&input.stamps[stamp], pos);
-                result.push((pos, stamp));
+            for s in stamp {
+                board.stamp(&input.stamps[s], pos);
+                result.push((pos, s));
             }
         }
+    }
+
+    for col in 0..6 {
+        let row = 6;
+
+        let coord1 = Coord::new(row, col);
+        let coord2 = Coord::new(row + 1, col);
+        let coord3 = Coord::new(row + 2, col);
+        let mut best_pos = None;
+        let mut best_score = board[coord1].val() + board[coord2].val() + board[coord3].val();
+
+        for stamp1 in 0..Input::M {
+            let c1 = Coord::new(0, 0);
+            let c2 = Coord::new(1, 0);
+            let c3 = Coord::new(2, 0);
+            let score = (board[coord1] + input.stamps[stamp1][c1]).val()
+                + (board[coord2] + input.stamps[stamp1][c2]).val()
+                + (board[coord3] + input.stamps[stamp1][c3]).val();
+
+            if best_score.change_max(score) {
+                best_pos = Some((Coord::new(row, col), vec![stamp1]));
+            }
+
+            for stamp2 in stamp1..Input::M {
+                let score = (board[coord1] + input.stamps[stamp1][c1] + input.stamps[stamp2][c1])
+                    .val()
+                    + (board[coord2] + input.stamps[stamp1][c2] + input.stamps[stamp2][c2]).val()
+                    + (board[coord3] + input.stamps[stamp1][c3] + input.stamps[stamp2][c3]).val();
+
+                if best_score.change_max(score) {
+                    best_pos = Some((Coord::new(row, col), vec![stamp1, stamp2]));
+                }
+            }
+        }
+
+        if let Some((pos, stamp)) = best_pos {
+            for s in stamp {
+                board.stamp(&input.stamps[s], pos);
+                result.push((pos, s));
+            }
+        }
+    }
+
+    let mut best_score = board.calc_score();
+    let mut best_stamp = vec![];
+    let coord = Coord::new(6, 6);
+
+    for t0 in 0..Input::M {
+        board.stamp(&input.stamps[t0], coord);
+
+        if best_score.change_max(board.calc_score()) {
+            best_stamp = vec![t0];
+        }
+
+        for t1 in t0..Input::M {
+            board.stamp(&input.stamps[t1], coord);
+
+            if best_score.change_max(board.calc_score()) {
+                best_stamp = vec![t0, t1];
+            }
+
+            for t2 in t1..Input::M {
+                board.stamp(&input.stamps[t2], coord);
+
+                if best_score.change_max(board.calc_score()) {
+                    best_stamp = vec![t0, t1, t2];
+                }
+
+                for t3 in t2..Input::M {
+                    board.stamp(&input.stamps[t3], coord);
+
+                    if best_score.change_max(board.calc_score()) {
+                        best_stamp = vec![t0, t1, t2, t3];
+                    }
+
+                    for t4 in t3..Input::M {
+                        board.stamp(&input.stamps[t4], coord);
+
+                        if best_score.change_max(board.calc_score()) {
+                            best_stamp = vec![t0, t1, t2, t3, t4];
+                        }
+
+                        board.revert(&input.stamps[t4], coord);
+                    }
+
+                    board.revert(&input.stamps[t3], coord);
+                }
+
+                board.revert(&input.stamps[t2], coord);
+            }
+
+            board.revert(&input.stamps[t1], coord);
+        }
+        board.revert(&input.stamps[t0], coord);
+    }
+
+    for s in best_stamp {
+        board.stamp(&input.stamps[s], coord);
+        result.push((coord, s));
     }
 
     println!("{}", result.len());
