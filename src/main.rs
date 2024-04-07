@@ -139,13 +139,25 @@ impl Stamp {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct Press {
+    pos: Coord,
+    stamp: usize,
+}
+
+impl Press {
+    fn new(pos: Coord, stamp: usize) -> Self {
+        Self { pos, stamp }
+    }
+}
+
 fn main() {
     let input = Input::read_input();
     let mut board = input.init_map.clone();
     let mut result = vec![];
 
-    for _ in 0..Input::K {
-        let mut best_pos = None;
+    while result.len() < Input::K {
+        let mut best_pos = (None, None);
         let mut best_score = board.calc_score();
 
         for row in 0..Input::N - 2 {
@@ -156,7 +168,7 @@ fn main() {
                     board.stamp(&input.stamps[t], c);
 
                     if best_score.change_max(board.calc_score()) {
-                        best_pos = Some((c, t));
+                        best_pos = (Some(Press::new(c, t)), None);
                     }
 
                     board.revert(&input.stamps[t], c);
@@ -164,9 +176,49 @@ fn main() {
             }
         }
 
-        if let Some((pos, stamp)) = best_pos {
-            board.stamp(&input.stamps[stamp], pos);
-            result.push((pos, stamp));
+        if result.len() + 2 <= Input::K {
+            for row in 0..Input::N - 2 {
+                for col in 0..Input::N - 2 {
+                    let c1 = Coord::new(row, col);
+
+                    for t1 in 0..Input::M {
+                        board.stamp(&input.stamps[t1], c1);
+
+                        for row in 0..Input::N - 2 {
+                            for col in 0..Input::N - 2 {
+                                let c2 = Coord::new(row, col);
+
+                                for t2 in 0..Input::M {
+                                    board.stamp(&input.stamps[t2], c2);
+
+                                    if best_score.change_max(board.calc_score()) {
+                                        best_pos =
+                                            (Some(Press::new(c1, t1)), Some(Press::new(c2, t2)));
+                                    }
+
+                                    board.revert(&input.stamps[t2], c2);
+                                }
+                            }
+                        }
+
+                        board.revert(&input.stamps[t1], c1);
+                    }
+                }
+            }
+        }
+
+        match best_pos {
+            (Some(p1), None) => {
+                board.stamp(&input.stamps[p1.stamp], p1.pos);
+                result.push((p1.pos, p1.stamp));
+            }
+            (Some(p1), Some(p2)) => {
+                board.stamp(&input.stamps[p1.stamp], p1.pos);
+                board.stamp(&input.stamps[p2.stamp], p2.pos);
+                result.push((p1.pos, p1.stamp));
+                result.push((p2.pos, p2.stamp));
+            }
+            _ => break,
         }
     }
 
