@@ -478,7 +478,7 @@ fn main() {
     let mut beam = beam::BeamSearch::new(large_state, small_state, action_generator);
 
     let deduplicator = NoOpDeduplicator;
-    let beam_width = beam::BayesianBeamWidthSuggester::new(49, 1, 1.98, 3000, 100, 10000, 1);
+    let beam_width = beam::BayesianBeamWidthSuggester::new(49, 1, 1.9, 3000, 100, 5000, 2);
     let (actions, _) = beam.run(49, beam_width, deduplicator);
 
     let mut result = vec![];
